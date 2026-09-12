@@ -5,3 +5,9 @@
 # Compiled Java class files
 *.class
 *.svg
+
+package-lock.json
+package.json
+test-export.js
+
+node_modules
