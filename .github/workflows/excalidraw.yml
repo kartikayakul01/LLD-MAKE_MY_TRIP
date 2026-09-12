@@ -50,7 +50,6 @@ jobs:
             return results;
           }
 
-          // Default Excalidraw light-mode stroke/text color -> light color for dark canvas
           const LIGHT_ON_DARK = "#e9ecef";
           function recolorForDark(el) {
             const out = { ...el };
@@ -78,7 +77,7 @@ jobs:
                 <html>
                   <head>
                     <script type="module">
-                      import * as ExcalidrawUtils from "https://esm.sh/@excalidraw/utils";
+                      import * as ExcalidrawUtils from "https://esm.sh/@excalidraw/utils@0.1.0";
                       window.ExcalidrawUtils = ExcalidrawUtils;
                     </script>
                   </head>
@@ -94,26 +93,38 @@ jobs:
 
                 const jsonContent = JSON.parse(fs.readFileSync(file, "utf8"));
 
-                // Filter out deleted elements to ensure full-bound canvas calculation
-                const validElements = (jsonContent.elements || [])
-                  .filter(el => !el.isDeleted)
-                  .map(recolorForDark); // bake in light colors for dark background
+                const isArray = Array.isArray(jsonContent);
+                const elementsSource = isArray ? jsonContent : (jsonContent.elements || []);
+                const validElements = elementsSource
+                  .filter(el => el && !el.isDeleted)
+                  .map(recolorForDark);
 
-                const svgString = await page.evaluate(async (data, elements) => {
-                  const svgElement = await window.ExcalidrawUtils.exportToSvg({
+                const baseAppState = (!isArray && jsonContent.appState) ? jsonContent.appState : {};
+                const filesData = (!isArray && jsonContent.files) ? jsonContent.files : {};
+
+                const svgString = await page.evaluate(async (appState, elements, files) => {
+                  const safeAppState = {
+                    theme: "dark",
+                    viewBackgroundColor: "#1e1e1e",
+                    exportBackground: true,
+                    exportWithCanvasBackground: true,
+                    exportScale: 3,
+                    exportPadding: 30,
+                    selectedElementIds: {},
+                    collaborators: new Map(),
+                    ...appState
+                  };
+
+                  const exportOptions = {
                     elements: elements,
-                    appState: {
-                      ...data.appState,
-                      selectedElementIds: {},        // ignore any saved selection, export full canvas
-                      exportBackground: true,        // correct key (was exportWithBackground)
-                      exportScale: 3,                 // 3x scale
-                      exportPadding: 30,              // full canvas boundary
-                      viewBackgroundColor: "#1e1e1e" // deep dark canvas color
-                    },
-                    files: data.files || {}
-                  });
+                    appState: safeAppState,
+                    files: files || {},
+                    exportPadding: 30
+                  };
+
+                  const svgElement = await window.ExcalidrawUtils.exportToSvg(exportOptions);
                   return svgElement.outerHTML;
-                }, jsonContent, validElements);
+                }, baseAppState, validElements, filesData);
 
                 fs.writeFileSync(svgPath, svgString);
                 console.log(`Wrote ${svgPath} successfully (${fs.statSync(svgPath).size} bytes)`);
