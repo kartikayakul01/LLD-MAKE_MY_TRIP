@@ -72,12 +72,13 @@ jobs:
               });
               const page = await browser.newPage();
 
+              // Explicitly load working version of Excalidraw Utils
               await page.setContent(`
                 <!DOCTYPE html>
                 <html>
                   <head>
                     <script type="module">
-                      import * as ExcalidrawUtils from "https://esm.sh/@excalidraw/utils";
+                      import * as ExcalidrawUtils from "https://esm.sh/@excalidraw/utils@0.1.0";
                       window.ExcalidrawUtils = ExcalidrawUtils;
                     </script>
                   </head>
@@ -104,21 +105,21 @@ jobs:
                 const filesData = (!isArray && jsonContent.files) ? jsonContent.files : {};
 
                 const svgString = await page.evaluate(async (appState, elements, files) => {
-                  const safeAppState = {
-                    theme: "dark",
-                    viewBackgroundColor: "#1e1e1e",
-                    exportBackground: true,
-                    exportWithCanvasBackground: true,
-                    exportScale: 3,
-                    exportPadding: 30,
-                    selectedElementIds: {},
-                    ...appState
-                  };
-
                   const exportOptions = {
                     elements: elements,
-                    appState: safeAppState,
-                    files: files || {}
+                    appState: {
+                      theme: "dark",
+                      viewBackgroundColor: "#1e1e1e",
+                      exportBackground: true,
+                      exportWithCanvasBackground: true,
+                      exportScale: 3,
+                      exportPadding: 30,
+                      selectedElementIds: {},
+                      collaborators: new Map(),
+                      ...appState
+                    },
+                    files: files || {},
+                    exportPadding: 30
                   };
 
                   const svgElement = await window.ExcalidrawUtils.exportToSvg(exportOptions);
