@@ -25,7 +25,7 @@ jobs:
       - name: Generate SVGs via Headless Chrome
         run: |
           cd /tmp
-          npm install puppeteer
+          npm install puppeteer @excalidraw/utils
           cd $GITHUB_WORKSPACE
 
           NODE_PATH=/tmp/node_modules node -e '
@@ -72,14 +72,14 @@ jobs:
               });
               const page = await browser.newPage();
 
+              // Load React and Excalidraw Utils via unpkg bundle
               await page.setContent(`
                 <!DOCTYPE html>
                 <html>
                   <head>
-                    <script type="module">
-                      import * as ExcalidrawUtils from "https://esm.sh/@excalidraw/utils@0.1.0";
-                      window.ExcalidrawUtils = ExcalidrawUtils;
-                    </script>
+                    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+                    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+                    <script src="https://unpkg.com/@excalidraw/utils/dist/excalidraw-utils.min.js"></script>
                   </head>
                   <body></body>
                 </html>
@@ -111,7 +111,6 @@ jobs:
                     exportScale: 3,
                     exportPadding: 30,
                     selectedElementIds: {},
-                    collaborators: new Map(),
                     ...appState
                   };
 
