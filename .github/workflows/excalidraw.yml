@@ -50,7 +50,6 @@ jobs:
             return results;
           }
 
-          // Default Excalidraw light-mode stroke/text color -> light color for dark canvas
           const LIGHT_ON_DARK = "#e9ecef";
           function recolorForDark(el) {
             const out = { ...el };
@@ -94,26 +93,29 @@ jobs:
 
                 const jsonContent = JSON.parse(fs.readFileSync(file, "utf8"));
 
-                // Filter out deleted elements to ensure full-bound canvas calculation
-                const validElements = (jsonContent.elements || [])
-                  .filter(el => !el.isDeleted)
-                  .map(recolorForDark); // bake in light colors for dark background
+                // Fallback if the excalidraw file is a top-level array instead of an object
+                const elementsSource = Array.isArray(jsonContent) ? jsonContent : (jsonContent.elements || []);
+                const baseAppState = (!Array.isArray(jsonContent) && jsonContent.appState) ? jsonContent.appState : {};
 
-                const svgString = await page.evaluate(async (data, elements) => {
+                const validElements = elementsSource
+                  .filter(el => el && !el.isDeleted)
+                  .map(recolorForDark);
+
+                const svgString = await page.evaluate(async (baseAppState, elements, filesData) => {
                   const svgElement = await window.ExcalidrawUtils.exportToSvg({
                     elements: elements,
                     appState: {
-                      ...data.appState,
-                      selectedElementIds: {},        // ignore any saved selection, export full canvas
-                      exportBackground: true,        // correct key (was exportWithBackground)
-                      exportScale: 3,                 // 3x scale
-                      exportPadding: 30,              // full canvas boundary
-                      viewBackgroundColor: "#1e1e1e" // deep dark canvas color
+                      ...baseAppState,
+                      selectedElementIds: {},        
+                      exportBackground: true,        
+                      exportScale: 3,                 
+                      exportPadding: 30,              
+                      viewBackgroundColor: "#1e1e1e" 
                     },
-                    files: data.files || {}
+                    files: filesData || {}
                   });
                   return svgElement.outerHTML;
-                }, jsonContent, validElements);
+                }, baseAppState, validElements, jsonContent.files || {});
 
                 fs.writeFileSync(svgPath, svgString);
                 console.log(`Wrote ${svgPath} successfully (${fs.statSync(svgPath).size} bytes)`);
