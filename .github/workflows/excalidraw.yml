@@ -1,0 +1,147 @@
+name: Generate Excalidraw SVG
+
+on:
+  push:
+    paths:
+      - "**"
+  workflow_dispatch:
+
+jobs:
+  export-svg:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Generate SVGs via Headless Chrome
+        run: |
+          cd /tmp
+          npm install puppeteer
+          cd $GITHUB_WORKSPACE
+
+          NODE_PATH=/tmp/node_modules node -e '
+          const fs = require("fs");
+          const path = require("path");
+          const puppeteer = require("puppeteer");
+
+          function findExcalidrawFiles(dir) {
+            let results = [];
+            const list = fs.readdirSync(dir);
+            list.forEach(file => {
+              const fullPath = path.join(dir, file);
+              const stat = fs.statSync(fullPath);
+              if (stat && stat.isDirectory()) {
+                if (!file.startsWith(".") && file !== "node_modules") {
+                  results = results.concat(findExcalidrawFiles(fullPath));
+                }
+              } else if (file.endsWith(".excalidraw")) {
+                results.push(fullPath);
+              }
+            });
+            return results;
+          }
+
+          // Default Excalidraw light-mode stroke/text color -> light color for dark canvas
+          const LIGHT_ON_DARK = "#e9ecef";
+          function recolorForDark(el) {
+            const out = { ...el };
+            if (out.strokeColor === "#1e1e1e" || out.strokeColor === "#000000") {
+              out.strokeColor = LIGHT_ON_DARK;
+            }
+            return out;
+          }
+
+          (async () => {
+            try {
+              const files = findExcalidrawFiles(".");
+              console.log(`Found ${files.length} .excalidraw file(s).`);
+
+              if (files.length === 0) return;
+
+              const browser = await puppeteer.launch({
+                headless: true,
+                args: ["--no-sandbox", "--disable-setuid-sandbox"]
+              });
+              const page = await browser.newPage();
+
+              await page.setContent(`
+                <!DOCTYPE html>
+                <html>
+                  <head>
+                    <script type="module">
+                      import * as ExcalidrawUtils from "https://esm.sh/@excalidraw/utils";
+                      window.ExcalidrawUtils = ExcalidrawUtils;
+                    </script>
+                  </head>
+                  <body></body>
+                </html>
+              `);
+
+              await page.waitForFunction(() => window.ExcalidrawUtils && window.ExcalidrawUtils.exportToSvg, { timeout: 30000 });
+
+              for (const file of files) {
+                const svgPath = file.replace(/\.excalidraw$/, ".svg");
+                console.log(`Exporting Full Dark Mode SVG (3x): ${file} -> ${svgPath}`);
+
+                const jsonContent = JSON.parse(fs.readFileSync(file, "utf8"));
+
+                // Filter out deleted elements to ensure full-bound canvas calculation
+                const validElements = (jsonContent.elements || [])
+                  .filter(el => !el.isDeleted)
+                  .map(recolorForDark); // bake in light colors for dark background
+
+                const svgString = await page.evaluate(async (data, elements) => {
+                  const svgElement = await window.ExcalidrawUtils.exportToSvg({
+                    elements: elements,
+                    appState: {
+                      ...data.appState,
+                      selectedElementIds: {},        // ignore any saved selection, export full canvas
+                      exportBackground: true,        // correct key (was exportWithBackground)
+                      exportScale: 3,                 // 3x scale
+                      exportPadding: 30,              // full canvas boundary
+                      viewBackgroundColor: "#1e1e1e" // deep dark canvas color
+                    },
+                    files: data.files || {}
+                  });
+                  return svgElement.outerHTML;
+                }, jsonContent, validElements);
+
+                fs.writeFileSync(svgPath, svgString);
+                console.log(`Wrote ${svgPath} successfully (${fs.statSync(svgPath).size} bytes)`);
+              }
+
+              await browser.close();
+            } catch (err) {
+              console.error("Export Failed:", err);
+              process.exit(1);
+            }
+          })();
+          '
+
+      - name: List Repository Files
+        run: |
+          echo "=== Directory SVGs ==="
+          find . -name "*.svg"
+
+      - name: Commit generated SVGs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -A "*.svg"
+
+          if git diff --cached --quiet; then
+            echo "No SVG changes to commit."
+          else
+            git commit -m "chore: export 3x scale darkmode Excalidraw SVGs [skip ci]"
+            git push
+          fi
