@@ -91,31 +91,38 @@ jobs:
                 const svgPath = file.replace(/\.excalidraw$/, ".svg");
                 console.log(`Exporting Full Dark Mode SVG (3x): ${file} -> ${svgPath}`);
 
-                const jsonContent = JSON.parse(fs.readFileSync(file, "utf8"));
+                const rawJson = fs.readFileSync(file, "utf8");
+                const jsonContent = JSON.parse(rawJson);
 
-                // Fallback if the excalidraw file is a top-level array instead of an object
                 const elementsSource = Array.isArray(jsonContent) ? jsonContent : (jsonContent.elements || []);
-                const baseAppState = (!Array.isArray(jsonContent) && jsonContent.appState) ? jsonContent.appState : {};
-
                 const validElements = elementsSource
                   .filter(el => el && !el.isDeleted)
                   .map(recolorForDark);
 
-                const svgString = await page.evaluate(async (baseAppState, elements, filesData) => {
-                  const svgElement = await window.ExcalidrawUtils.exportToSvg({
+                // Pass pure stringified representation to avoid serialization/undefined breakdown issues across contexts
+                const originalAppStateStr = (!Array.isArray(jsonContent) && jsonContent.appState) ? JSON.stringify(jsonContent.appState) : "{}";
+                const filesDataStr = jsonContent.files ? JSON.stringify(jsonContent.files) : "{}";
+
+                const svgString = await page.evaluate(async (appStateJson, elements, filesJson) => {
+                  const baseAppState = JSON.parse(appStateJson) || {};
+                  const parsedFiles = JSON.parse(filesJson) || {};
+
+                  const exportOptions = {
                     elements: elements,
                     appState: {
                       ...baseAppState,
-                      selectedElementIds: {},        
+                      selectedElementIds: baseAppState.selectedElementIds || {},        
                       exportBackground: true,        
                       exportScale: 3,                 
                       exportPadding: 30,              
                       viewBackgroundColor: "#1e1e1e" 
                     },
-                    files: filesData || {}
-                  });
+                    files: parsedFiles
+                  };
+
+                  const svgElement = await window.ExcalidrawUtils.exportToSvg(exportOptions);
                   return svgElement.outerHTML;
-                }, baseAppState, validElements, jsonContent.files || {});
+                }, originalAppStateStr, validElements, filesDataStr);
 
                 fs.writeFileSync(svgPath, svgString);
                 console.log(`Wrote ${svgPath} successfully (${fs.statSync(svgPath).size} bytes)`);
