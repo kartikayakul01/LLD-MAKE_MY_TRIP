@@ -32,105 +32,109 @@ jobs:
           const fs = require("fs");
           const path = require("path");
           const puppeteer = require("puppeteer");
-          
+
           function findExcalidrawFiles(dir) {
-          let results = [];
-          const list = fs.readdirSync(dir);
-          list.forEach(file => {
-          const fullPath = path.join(dir, file);
-          const stat = fs.statSync(fullPath);
-          if (stat && stat.isDirectory()) {
-          if (!file.startsWith(".") && file !== "node_modules") {
-          results = results.concat(findExcalidrawFiles(fullPath));
-        }
-        } else if (file.endsWith(".excalidraw")) {
-          results.push(fullPath);
-        }
-        });
-          return results;
-        }
+            let results = [];
+            const list = fs.readdirSync(dir);
+            list.forEach(file => {
+              const fullPath = path.join(dir, file);
+              const stat = fs.statSync(fullPath);
+              if (stat && stat.isDirectory()) {
+                if (!file.startsWith(".") && file !== "node_modules") {
+                  results = results.concat(findExcalidrawFiles(fullPath));
+                }
+              } else if (file.endsWith(".excalidraw")) {
+                results.push(fullPath);
+              }
+            });
+            return results;
+          }
 
           const LIGHT_ON_DARK = "#e9ecef";
           function recolorForDark(el) {
-          const out = { ...el };
-          if (out.strokeColor === "#1e1e1e" || out.strokeColor === "#000000") {
-          out.strokeColor = LIGHT_ON_DARK;
-        }
-          return out;
-        }
+            const out = { ...el };
+            if (out.strokeColor === "#1e1e1e" || out.strokeColor === "#000000") {
+              out.strokeColor = LIGHT_ON_DARK;
+            }
+            return out;
+          }
 
           (async () => {
-          try {
-          const files = findExcalidrawFiles(".");
-          console.log(`Found ${files.length} .excalidraw file(s).`);
-          
-          if (files.length === 0) return;
-          
-          const browser = await puppeteer.launch({
-        headless: true,
-        args: ["--no-sandbox", "--disable-setuid-sandbox"]
-        });
-          const page = await browser.newPage();
-          
-          await page.setContent(`
-          <!DOCTYPE html>
-          <html>
-          <head>
-          <script type="module">
-          import * as ExcalidrawUtils from "https://esm.sh/@excalidraw/utils";
-          window.ExcalidrawUtils = ExcalidrawUtils;
-          </script>
-          </head>
-          <body></body>
-          </html>
-          `);
+            try {
+              const files = findExcalidrawFiles(".");
+              console.log(`Found ${files.length} .excalidraw file(s).`);
 
-        await page.waitForFunction(() => window.ExcalidrawUtils && window.ExcalidrawUtils.exportToSvg, { timeout: 30000 });
-          
-          for (const file of files) {
-          const svgPath = file.replace(/\.excalidraw$/, ".svg");
-        console.log(`Exporting Full Dark Mode SVG (3x): ${file} -> ${svgPath}`);
-          
-          const rawJson = fs.readFileSync(file, "utf8");
-          const jsonContent = JSON.parse(rawJson);
-          
-          const isArray = Array.isArray(jsonContent);
-        const elementsSource = isArray ? jsonContent : (jsonContent.elements || []);
-          const validElements = elementsSource
-          .filter(el => el && !el.isDeleted)
-          .map(recolorForDark);
+              if (files.length === 0) return;
 
-        const appStateData = (!isArray && jsonContent.appState) ? jsonContent.appState : {};
-        const filesData = (!isArray && jsonContent.files) ? jsonContent.files : {};
-          
-          const svgString = await page.evaluate(async (appState, elements, files) => {
-          const exportOptions = {
-        elements: elements,
-        appState: {
-                    ...appState,
-          selectedElementIds: (appState && appState.selectedElementIds) ? appState.selectedElementIds : {},
-          exportBackground: true,
-          exportScale: 3,
-          exportPadding: 30,
-          viewBackgroundColor: "#1e1e1e"
-        },
-        files: files || {}
-        };
-          
-          const svgElement = await window.ExcalidrawUtils.exportToSvg(exportOptions);
-          return svgElement.outerHTML;
-        }, appStateData, validElements, filesData);
-          
-          fs.writeFileSync(svgPath, svgString);
-          console.log(`Wrote ${svgPath} successfully (${fs.statSync(svgPath).size} bytes)`);
-        }
+              const browser = await puppeteer.launch({
+                headless: true,
+                args: ["--no-sandbox", "--disable-setuid-sandbox"]
+              });
+              const page = await browser.newPage();
 
-          await browser.close();
-        } catch (err) {
-          console.error("Export Failed:", err);
-          process.exit(1);
-        }
-        })();
+              await page.setContent(`
+                <!DOCTYPE html>
+                <html>
+                  <head>
+                    <script type="module">
+                      import * as ExcalidrawUtils from "https://esm.sh/@excalidraw/utils";
+                      window.ExcalidrawUtils = ExcalidrawUtils;
+                    </script>
+                  </head>
+                  <body></body>
+                </html>
+              `);
+
+              await page.waitForFunction(() => window.ExcalidrawUtils && window.ExcalidrawUtils.exportToSvg, { timeout: 30000 });
+
+              for (const file of files) {
+                const svgPath = file.replace(/\.excalidraw$/, ".svg");
+                console.log(`Exporting Full Dark Mode SVG (3x): ${file} -> ${svgPath}`);
+
+                const rawJson = fs.readFileSync(file, "utf8");
+                const jsonContent = JSON.parse(rawJson);
+
+                const isArray = Array.isArray(jsonContent);
+                const elementsSource = isArray ? jsonContent : (jsonContent.elements || []);
+                const validElements = elementsSource
+                  .filter(el => el && !el.isDeleted)
+                  .map(recolorForDark);
+
+                const appStateData = (!isArray && jsonContent.appState) ? jsonContent.appState : {};
+                const filesData = (!isArray && jsonContent.files) ? jsonContent.files : {};
+
+                const svgString = await page.evaluate(async (appState, elements, files) => {
+                  const safeAppState = {
+                    theme: "dark",
+                    viewBackgroundColor: "#1e1e1e",
+                    exportBackground: true,
+                    exportWithCanvasBackground: true,
+                    exportScale: 3,
+                    exportPadding: 30,
+                    selectedElementIds: {},
+                    ...appState
+                  };
+
+                  const exportOptions = {
+                    elements: elements,
+                    appState: safeAppState,
+                    files: files || {}
+                  };
+
+                  const svgElement = await window.ExcalidrawUtils.exportToSvg(exportOptions);
+                  return svgElement.outerHTML;
+                }, appStateData, validElements, filesData);
+
+                fs.writeFileSync(svgPath, svgString);
+                console.log(`Wrote ${svgPath} successfully (${fs.statSync(svgPath).size} bytes)`);
+              }
+
+              await browser.close();
+            } catch (err) {
+              console.error("Export Failed:", err);
+              process.exit(1);
+            }
+          })();
           '
 
       - name: List Repository Files
