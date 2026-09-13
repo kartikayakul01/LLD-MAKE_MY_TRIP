@@ -1,3 +1,4 @@
+import models.User;
 import models.UserEnum;
 
 import java.util.Scanner;
@@ -28,11 +29,15 @@ class Main{
     }
     private static void consumerFlowStarts(){}
 
+
+
     public static void main(String[] args){
         System.out.println("================= Welcome to MOVIE TICKET BOOKING SYSTEM =============================");
 
         UserEnum theUser= userSelections();
         System.out.println(theUser.toString()+" flow starts");
+
+
         switch (theUser){
             case Admin -> {
                 adminFlowStarts();

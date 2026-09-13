@@ -25,6 +25,9 @@ public class User {
         this.userType = type;
     }
 
+    public UserEnum getUserType(){
+        return this.userType;
+    }
     public Coordinates getCurrentlocations(){
         return this.currentlocations;
     }
