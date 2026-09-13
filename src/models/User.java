@@ -21,6 +21,10 @@ public class User {
         this.currentlocations=new Coordinates(x,y);
     }
 
+    public void setUserType(UserEnum type){
+        this.userType = type;
+    }
+
     public Coordinates getCurrentlocations(){
         return this.currentlocations;
     }
